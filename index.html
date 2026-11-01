@@ -1,0 +1,102 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aviator Stats</title>
+<style>
+:root{--bg:#07070a;--card:rgba(255,255,255,.05);--bd:rgba(255,255,255,.1);--tx:#f2f2f5;--mu:#9a9aa8;--red:#ff2d55;--gold:#ffc83d;--grn:#2dff9a}
+:root[data-t=light]{--bg:#f4f4f7;--card:rgba(0,0,0,.05);--bd:rgba(0,0,0,.12);--tx:#15151a;--mu:#606070}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -10%,#3a0010,var(--bg) 55%) fixed;color:var(--tx);font:15px system-ui,sans-serif;min-height:100vh}
+.card{background:var(--card);border:1px solid var(--bd);backdrop-filter:blur(14px);border-radius:16px;padding:16px;margin:12px 0}
+h1,h2,h3{font-family:Orbitron,system-ui,sans-serif;letter-spacing:.06em;margin:0 0 10px}h3{font-size:14px;color:var(--gold)}
+input,select,button{font:inherit;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:10px 12px}
+button{cursor:pointer;background:linear-gradient(135deg,var(--red),#a30023);border:0;color:#fff;font-weight:600}button.g{background:var(--card);border:1px solid var(--bd);color:var(--tx)}
+.wrap{max-width:900px;margin:auto;padding:12px}#login{display:flex;min-height:100vh;align-items:center;justify-content:center}
+#login .card{width:min(92vw,380px);text-align:center;animation:in .8s}@keyframes in{from{opacity:0;transform:translateY(20px) scale(.97)}}
+.glow{color:var(--gold);text-shadow:0 0 18px var(--red)}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}.k{font-size:22px;font-weight:700;color:var(--gold)}.s{color:var(--mu);font-size:12px}
+nav{display:flex;gap:6px;overflow-x:auto;position:sticky;top:0;padding:8px 0;background:var(--bg);z-index:5}nav button{white-space:nowrap}nav button.on{outline:2px solid var(--gold)}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--bd);text-align:left;font-size:13px}
+.bar{height:14px;border-radius:7px;background:linear-gradient(90deg,var(--red),var(--gold))}.tag{padding:2px 8px;border-radius:20px;font-size:11px;border:1px solid var(--gold);color:var(--gold)}
+.err{color:var(--red);min-height:18px}.hide{display:none!important}canvas{width:100%;height:180px}
+.sig{font-size:20px;font-weight:800}.LOW{color:var(--grn)}.MEDIUM{color:var(--gold)}.HIGH{color:var(--red)}.NONE{color:var(--mu)}
+</style></head><body>
+<div id="login"><div class="card"><h1 class="glow">AVIATOR STATS</h1><div class="s" style="margin-bottom:14px">Secure access</div>
+<div class="row"><input id="key" type="password" placeholder="Access key" autocomplete="off"><button class="g" style="flex:0" onclick="key.type=key.type=='password'?'text':'password'">👁</button></div>
+<p class="err" id="lerr"></p><button style="width:100%" id="lb" onclick="login()">Enter</button></div></div>
+<div id="app" class="wrap hide">
+<div class="row" style="align-items:center"><h2 class="glow" style="flex:3">AVIATOR STATS</h2><button class="g" onclick="toggleTheme()">◐</button><button class="g" onclick="logout()">Logout</button></div>
+<div class="s">⚠ Rounds are random. This tool shows historical statistics only — it cannot predict the next multiplier. Data source: <b>MANUAL / IMPORTED</b> (no live feed).</div>
+<nav><button data-v="dash">Dashboard</button><button data-v="sig">Signal</button><button data-v="ana">Analysis</button><button data-v="trk">Tracker</button><button data-v="adm" id="admb" class="hide">Admin</button></nav>
+<div id="dash" class="v"></div><div id="sig" class="v hide"></div><div id="ana" class="v hide"></div>
+<div id="trk" class="v hide"><div class="card"><h3>ADD RESULT</h3><div class="row"><input id="nm" type="number" step="0.01" min="1" placeholder="e.g. 2.35"><button onclick="add()">Add</button></div><p class="err" id="terr"></p>
+<div class="row"><input type="file" id="csv" accept=".csv,.txt" onchange="imp(this)"><button class="g" onclick="exp()">Export CSV</button><button class="g" onclick="reset()">Reset all</button></div><div class="s">CSV: one multiplier per line, or "multiplier,timestamp".</div></div>
+<div class="card"><div class="row"><input type="date" id="df" onchange="rt()"><input type="date" id="dt" onchange="rt()"></div><div style="overflow:auto"><table id="tb"></table></div></div></div>
+<div id="adm" class="v hide"></div></div>
+<script>
+const $=id=>document.getElementById(id);let R=[],N=50,me={};
+const api=async(u,m='GET',b)=>{const r=await fetch('/api/'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(r.status==401&&u!='login'){show(0)}if(!r.ok)throw new Error(j.error||'Error');return j};
+const f2=x=>x==null||isNaN(x)?'–':x.toFixed(2),cat=m=>m<2?'Low':m<=10?'Medium':'High';
+function toggleTheme(){const d=document.documentElement;d.dataset.t=d.dataset.t=='light'?'dark':'light';localStorage.t=d.dataset.t}document.documentElement.dataset.t=localStorage.t||'dark';
+function show(on){$('login').classList.toggle('hide',!!on);$('app').classList.toggle('hide',!on)}
+async function login(){$('lerr').textContent='';$('lb').textContent='Verifying…';try{const j=await api('login','POST',{key:$('key').value});$('key').value='';await boot()}catch(e){$('lerr').textContent=e.message}$('lb').textContent='Enter'}
+$('key').onkeydown=e=>e.key=='Enter'&&login();
+async function logout(){await api('logout','POST').catch(()=>{});show(0)}
+async function boot(){try{me=await api('me');}catch{return show(0)}show(1);$('admb').classList.toggle('hide',!me.admin);await load();go('dash');setTimeout(()=>logout(),me.exp-Date.now())}
+async function load(){R=(await api('results')).sort((a,b)=>a.t-b.t||a.id-b.id);render()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+function go(v){document.querySelectorAll('.v').forEach(e=>e.classList.toggle('hide',e.id!=v));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));if(v=='adm')admin();render()}
+const st=a=>{const n=a.length;if(!n)return null;const s=[...a].sort((x,y)=>x-y),mean=a.reduce((p,q)=>p+q,0)/n,sd=Math.sqrt(a.reduce((p,q)=>p+(q-mean)**2,0)/n),pc=p=>s[Math.min(n-1,Math.floor(p*n))];
+ return{n,mean,sd,med:pc(.5),min:s[0],max:s[n-1],q1:pc(.25),q3:pc(.75)}};
+const ema=(a,p)=>{const k=2/(p+1);let e=a[0];return a.map(x=>e=x*k+e*(1-k))};
+const streak=(a,f)=>{let n=0;for(let i=a.length-1;i>=0&&f(a[i]);i--)n++;return n};
+function dist(a){const d={Low:0,Medium:0,High:0};a.forEach(x=>d[cat(x)]++);return d}
+function signal(){const a=R.map(x=>x.m),n=a.length;
+ if(n<30)return{cls:'NONE',name:'NO SIGNAL',why:`Only ${n} rounds recorded. At least 30 are needed for any meaningful statistics.`,n};
+ const p=a.filter(x=>x>=2).length/n,cur=streak(a,x=>x<2);let h=0,t=0;
+ for(let i=cur;i<n;i++){let ok=true;for(let j=1;j<=cur;j++)if(a[i-j]>=2){ok=false;break}if(ok&&(cur==0||a[i-cur-1]===undefined||a[i-cur-1]>=2||true)){t++;if(a[i]>=2)h++}}
+ const pc=t>=15?h/t:p,w=a.slice(-50),s=st(w),sa=st(a),vr=s.sd/(sa.sd||1);
+ let cls,name;if(vr>1.5){cls='HIGH';name='HIGH RISK'}else if(pc>=.5&&vr<1.2){cls='LOW';name='LOW RISK OBSERVATION'}else if(pc>=.35){cls='MEDIUM';name='MEDIUM RISK'}else{cls='NONE';name='NO SIGNAL'}
+ return{cls,name,n,p,pc,t,cur,vr,lo:s.q1,hi:s.q3,rel:Math.min(100,Math.round(n/200*100)),
+ why:`Historically ${(p*100).toFixed(0)}% of rounds were ≥2.00x. After a streak of ${cur} low round(s), ${t>=15?(pc*100).toFixed(0)+'% ('+h+'/'+t+' cases)':'sample too small, using overall rate'} were ≥2.00x. Recent volatility is ${vr.toFixed(2)}× the historical level. This describes the past; it does not forecast the next round.`}}
+function line(cv,series,cols){const c=$(cv),x=c.getContext('2d'),W=c.width=c.clientWidth*2,H=c.height=360;x.clearRect(0,0,W,H);
+ const all=series.flat(),mx=Math.max(...all,2),mn=Math.min(...all,1);series.forEach((s,i)=>{x.beginPath();x.strokeStyle=cols[i];x.lineWidth=3;s.forEach((v,j)=>{const X=j/(Math.max(s.length-1,1))*W,Y=H-(v-mn)/(mx-mn||1)*(H-20)-10;j?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke()})}
+function bars(d,n){return Object.entries(d).map(([k,v])=>`<div class="s">${k} — ${v} (${n?(v/n*100).toFixed(1):0}%)</div><div class="bar" style="width:${n?v/n*100:0}%"></div>`).join('')}
+function render(){rdash();rsig();rana();rt()}
+function rdash(){const a=R.map(x=>x.m),w=a.slice(-N),s=st(w),age=R.length?Math.round((Date.now()-R[R.length-1].t)/60000):null;
+ $('dash').innerHTML=`<div class="card"><div class="row">${[10,25,50,100].map(k=>`<button class="${k==N?'':'g'}" onclick="N=${k};rdash()">Last ${k}</button>`).join('')}</div></div>
+ ${s?`<div class="grid"><div class="card"><div class="k">${f2(s.mean)}x</div><div class="s">Average</div></div><div class="card"><div class="k">${f2(s.max)}x</div><div class="s">Highest</div></div><div class="card"><div class="k">${f2(s.min)}x</div><div class="s">Lowest</div></div><div class="card"><div class="k">${R.length}</div><div class="s">Total rounds</div></div></div>
+ <div class="card"><h3>TREND (gold) & EMA10 (red)</h3><canvas id="c1"></canvas></div><div class="card"><h3>DISTRIBUTION (Low &lt;2 · Med 2–10 · High &gt;10)</h3>${bars(dist(w),w.length)}</div>
+ <div class="card"><h3>STATUS</h3><span class="tag">MANUAL DATA</span> <span class="tag">Last entry: ${age<1?'just now':age<60?age+' min ago':Math.round(age/60)+' h ago'}</span></div>`:'<div class="card">No data yet. Add results in the Tracker tab.</div>'}`;
+ if(s)line('c1',[w,ema(w,10)],['#ffc83d','#ff2d55'])}
+function rsig(){const g=signal(),a=R.map(x=>x.m);$('sig').innerHTML=`<div class="card"><h3>SIGNAL</h3><div class="sig ${g.cls}">${g.name}</div><p class="s">ID: SIG-${Date.now().toString(36).toUpperCase()} · Round ref: n/a · ${new Date().toLocaleString()}</p>
+ ${g.p!=null?`<div class="grid"><div class="card"><div class="k">${f2(g.lo)}–${f2(g.hi)}x</div><div class="s">Typical range (middle 50% of last 50)</div></div><div class="card"><div class="k">${(g.pc*100).toFixed(0)}%</div><div class="s">Historical share ≥2.00x</div></div><div class="card"><div class="k">${g.rel}%</div><div class="s">Sample reliability (data size, NOT accuracy)</div></div></div>`:''}
+ <p>${g.why}</p><p class="s">Observation window: next 10 rounds. Accuracy is not reported because no predictions have been logged and verified.</p></div>`}
+function rana(){const a=R.map(x=>x.m);if(a.length<5){$('ana').innerHTML='<div class="card">Need at least 5 rounds.</div>';return}
+ const s=st(a),lowS=Math.max(...runs(a,x=>x<2)),hiS=Math.max(...runs(a,x=>x>=10),0),z=a.slice(-10).map(x=>Math.abs((x-s.mean)/(s.sd||1))),an=a.slice(-30).filter(x=>Math.abs((x-s.mean)/(s.sd||1))>3);
+ const half=Math.floor(a.length/2),h1=st(a.slice(0,half)),h2=st(a.slice(half));
+ const sec=(t,b)=>`<div class="card"><h3>${t}</h3>${b}</div>`;
+ $('ana').innerHTML=sec('A. LOW MULTIPLIER (<2x)',`${(a.filter(x=>x<2).length/a.length*100).toFixed(1)}% of rounds · current streak ${streak(a,x=>x<2)}`)+
+ sec('B. HIGH FREQUENCY (≥10x)',`${(a.filter(x=>x>=10).length/a.length*100).toFixed(1)}% of rounds`)+
+ sec('C. CRASH DISTRIBUTION',bars({'<1.5x':a.filter(x=>x<1.5).length,'1.5–2x':a.filter(x=>x>=1.5&&x<2).length,'2–5x':a.filter(x=>x>=2&&x<5).length,'5–10x':a.filter(x=>x>=5&&x<10).length,'≥10x':a.filter(x=>x>=10).length},a.length))+
+ sec('D/E. CONSECUTIVE STATS',`Longest low (&lt;2x) run: ${lowS} · Longest high (≥10x) run: ${hiS}`)+
+ sec('F. SESSION',`This session started ${new Date(me.exp-8*3600e3).toLocaleTimeString()} · ${R.filter(x=>x.t>me.exp-8*3600e3).length} rounds recorded this session`)+
+ sec('G. HISTORICAL COMPARISON',`First half avg ${f2(h1.mean)}x (median ${f2(h1.med)}) vs second half avg ${f2(h2.mean)}x (median ${f2(h2.med)})`)+
+ sec('H. VOLATILITY',`Std dev ${f2(s.sd)} · last-50 / all ratio ${f2(st(a.slice(-50)).sd/(s.sd||1))}`)+
+ sec('I. PROBABILITY DISTRIBUTION (empirical)',`P(≥1.5x) ${(a.filter(x=>x>=1.5).length/a.length*100).toFixed(0)}% · P(≥2x) ${(a.filter(x=>x>=2).length/a.length*100).toFixed(0)}% · P(≥5x) ${(a.filter(x=>x>=5).length/a.length*100).toFixed(0)}% · P(≥10x) ${(a.filter(x=>x>=10).length/a.length*100).toFixed(0)}%`)+
+ sec('J. ANOMALIES (>3σ, last 30)',an.length?an.map(x=>f2(x)+'x').join(', '):'None detected')}
+function runs(a,f){const o=[0];let c=0;a.forEach(x=>{if(f(x)){c++;o.push(c)}else c=0});return o}
+function rt(){let l=R;const f=$('df').value,t=$('dt').value;if(f)l=l.filter(x=>x.t>=new Date(f).getTime());if(t)l=l.filter(x=>x.t<=new Date(t).getTime()+864e5);
+ $('tb').innerHTML='<tr><th>#</th><th>Mult</th><th>Cat</th><th>Time</th><th>Src</th><th></th></tr>'+[...l].reverse().slice(0,200).map(x=>`<tr><td>${x.id}</td><td>${f2(x.m)}x</td><td>${cat(x.m)}</td><td>${new Date(x.t).toLocaleString()}</td><td>${x.src}</td><td><button class="g" onclick="edit(${x.id})">✎</button> <button class="g" onclick="del(${x.id})">✕</button></td></tr>`).join('')}
+async function add(){$('terr').textContent='';try{await api('results','POST',{m:$('nm').value});$('nm').value='';await load()}catch(e){$('terr').textContent=e.message}}
+$('nm').onkeydown=e=>e.key=='Enter'&&add();
+async function edit(id){const v=prompt('New multiplier');if(v){try{await api('results/'+id,'PUT',{m:v});load()}catch(e){alert(e.message)}}}
+async function del(id){await api('results/'+id,'DELETE');load()}
+async function reset(){if(confirm('Delete ALL your recorded results?')){await api('results','DELETE');load()}}
+async function imp(i){const t=await i.files[0].text();const rows=t.split(/\r?\n/).map(l=>l.split(',')).map(([m,t])=>({m:parseFloat(m),t:t?Date.parse(t)||+t:undefined})).filter(r=>r.m);
+ try{const j=await api('results/import','POST',{rows});alert('Imported '+j.imported);i.value='';load()}catch(e){alert(e.message)}}
+function exp(){const b=new Blob(['multiplier,timestamp\n'+R.map(x=>x.m+','+new Date(x.t).toISOString()).join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='results.csv';a.click()}
+async function admin(){try{const [k,s]=await Promise.all([api('admin/keys'),api('admin/sessions')]);
+ $('adm').innerHTML=`<div class="card"><h3>ACCESS KEYS</h3><table>${k.map(x=>`<tr><td>${x.label}${x.admin?' ★':''}</td><td>${x.rounds} rounds</td><td>${x.active?'Active':'Disabled'}</td><td>${x.admin?'':`<button class="g" onclick="tog('${x.id}')">${x.active?'Deactivate':'Activate'}</button>`}</td></tr>`).join('')}</table>
+ <div class="row" style="margin-top:10px"><input id="nl" placeholder="Label"><input id="nk" placeholder="New key (8+ chars)"><button onclick="nkey()">Create</button></div></div>
+ <div class="card"><h3>ACTIVE SESSIONS (${s.length})</h3>${s.map(x=>`<div class="s">${x.label} · since ${new Date(x.created).toLocaleString()}</div>`).join('')}</div>`}catch(e){$('adm').innerHTML=e.message}}
+async function tog(id){await api('admin/keys/'+id,'PATCH');admin()}
+async function nkey(){try{await api('admin/keys','POST',{label:$('nl').value,key:$('nk').value});admin()}catch(e){alert(e.message)}}
+boot();
+</script></body></html>
